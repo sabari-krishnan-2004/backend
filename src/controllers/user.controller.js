@@ -4,7 +4,7 @@ import {User} from "../models/user.model.js"
 import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 
-const generateAcessTokenAndRefreshToken = async(userId)=>{
+const generateAccessTokenAndRefreshToken = async(userId)=>{
     try {
         const user = await User.findById(userId)
         const accessToken = user.generateAcessToken()
@@ -90,7 +90,7 @@ const loginUser = asyncHandler(async (req,res)=>{
 
     const {username,email,password} = req.body
 
-    if (!username||!email) {
+    if (!username&&!email) {
         throw new ApiError(400,"username or password is required")
     }
     const user = await User.findOne({
@@ -106,10 +106,54 @@ const loginUser = asyncHandler(async (req,res)=>{
         throw new ApiError(401,"password is incorrect")
     }
 
-    const {accessToken,refreshToken}=await generateAcessTokenAndRefreshToken(user._id)
+    const {accessToken,refreshToken}=await generateAccessTokenAndRefreshToken(user._id)
+
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+    return res.status(200).cookie("accessToken",accessToken,options).cookie("refreshToken",refreshToken,options)
+    .json(
+        new ApiResponse(
+            200,{
+                user:loggedInUser,refreshToken,accessToken
+            },
+            "user logged in successfuly"
+        )
+    )
 
 })
 
+const logoutUser = asyncHandler(async(req,res)=>{
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set : {
+                refreshToken:undefined
+            }
+        },
+        {
+            new:true
+        }
+    )
+
+    const options = {
+        httpOnly : true,
+        secure : true
+    }
+
+    return res.status(200).clearCookie("accessToken",options).clearCookie("refreshToken",options)
+    .json(
+        new ApiResponse(
+            200,{},"user logged out"
+        )
+    )
+})
+
 export {registerUser,
-    loginUser
+    loginUser,
+    logoutUser
 };
